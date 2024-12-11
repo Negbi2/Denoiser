@@ -1,10 +1,8 @@
 # Real Time Denoiser
 
-___
 
 A simple python program that cleans up microphone audio in real time
 
-___
 ## Help
 
 ```
@@ -21,12 +19,10 @@ options:
                         output device (numeric ID)
 ```
 
-___
 
 <br>
 
 ## Installation
-___
 
 * clone the repository (or just download the denoiser.py file)
 * install this project's dependencies
