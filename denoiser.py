@@ -191,7 +191,7 @@ def initialize_arguments():
     parser.add_argument("-a", "--aggressive", help="make the noise canceling more aggressive (may result in artifacts)", action="store_true")
 
     parser.add_argument(
-        '-i', '--input-device', type=int, help='input device (numeric ID)')
+        '-i', '--input-device', type=int, help='input device (numeric ID) not needed when processing a file')
     parser.add_argument(
         '-o', '--output-device', type=int, help='output device (numeric ID)')
 
