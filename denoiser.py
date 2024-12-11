@@ -67,7 +67,6 @@ def list_outputs():
                 print(
                     f"  {key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
 
-
 def input_callback(indata, frames, time, status):
     if status:
         print(status)
@@ -80,7 +79,6 @@ def input_callback(indata, frames, time, status):
                                     freq_mask_smooth_hz=300,
                                     stationary=True)  # Assume stationary noise (e.g., hum or consistent noise)
     audio_queue.put_nowait(reduced_noise)  # Non-blocking put into the queue
-
 
 def output_callback(outdata, frames, time, status):
     if status:
@@ -98,15 +96,17 @@ def output_callback(outdata, frames, time, status):
         outdata[:, 0] = 0  # If no audio is available, fill with silence
 
 
-def denoise_file(filename, output_device_id):
+def denoise_file(filename, output_device_id, output_filename="denoised_output.wav"):
     event = threading.Event()
-
     try:
         data, fs = sf.read(filename, always_2d=True, dtype=np.float32)
 
         # Perform noise reduction on the file data
         denoised_data = nr.reduce_noise(y=data[:, 0], sr=fs, prop_decrease=prop_decrease,
                                         time_mask_smooth_ms=20, freq_mask_smooth_hz=300, stationary=True)
+
+        # Create an empty list to accumulate the processed (denoised) audio
+        output_data = []
 
         def file_callback(outdata, frames, time, status):
             global current_frame
@@ -120,6 +120,9 @@ def denoise_file(filename, output_device_id):
             chunk = denoised_data[current_frame:current_frame + chunksize]
             outdata[:chunksize, 0] = chunk[:chunksize]  # Ensure data fits the outdata array
 
+            # Append the chunk to the output_data list
+            output_data.append(chunk[:chunksize])
+
             # If the chunk is smaller than the requested frame, fill the rest with silence
             if chunksize < frames:
                 outdata[chunksize:, :] = 0
@@ -132,6 +135,14 @@ def denoise_file(filename, output_device_id):
         with sd.OutputStream(samplerate=fs, device=output_device_id, channels=MONO_AUDIO,
                              callback=file_callback, dtype=np.float32, finished_callback=event.set):
             event.wait()
+
+        # After processing is finished, combine all the chunks into a single numpy array
+        output_data = np.concatenate(output_data)
+
+        # Save the denoised audio to the specified output file
+        sf.write(output_filename, output_data, fs)
+        print(f"Output audio saved to {output_filename}")
+
     except KeyboardInterrupt:
         print("\nInterrupted by user")
     except Exception as e:
