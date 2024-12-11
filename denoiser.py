@@ -8,6 +8,9 @@ import argparse
 MONO_AUDIO = 1
 OPTIMAL_BLOCK_SIZE = 1024
 
+DEFAULT_INPUT_DEVICE = sd.default.device[0]
+DEFAULT_OUTPUT_DEVICE = sd.default.device[1]
+
 # Create a queue for storing processed audio data
 audio_queue = queue.Queue()
 
@@ -15,23 +18,45 @@ input_device_id = -1
 
 
 def list_devices():
+    default_input_device = DEFAULT_INPUT_DEVICE
+    default_output_device = DEFAULT_OUTPUT_DEVICE
+
     for key, device in enumerate(sd.query_devices()):
-        print(
-            f"{key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
+        if key == default_input_device:
+            print(
+                f"> {key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
+        elif key == default_output_device:
+            print(
+                f"< {key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
+        else:
+            print(
+                f"  {key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
 
 
 def list_inputs():
+    default_input_device = DEFAULT_INPUT_DEVICE
+
     for key, device in enumerate(sd.query_devices()):
         if device['max_input_channels'] > 0:
-            print(
-                f"{key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
+            if key == default_input_device:
+                print(
+                    f"> {key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
+            else:
+                print(
+                    f"  {key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
 
 
 def list_outputs():
+    default_output_device = DEFAULT_OUTPUT_DEVICE
+
     for key, device in enumerate(sd.query_devices()):
         if device['max_output_channels'] > 0:
-            print(
-                f"{key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
+            if key == default_output_device:
+                print(
+                    f"< {key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
+            else:
+                print(
+                    f"  {key}: {device['name']} ({device['max_input_channels']} in, {device['max_output_channels']} out) rate:{sd.query_devices(key)['default_samplerate']}")
 
 
 def input_callback(indata, frames, time, status):
