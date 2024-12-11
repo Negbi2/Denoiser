@@ -1,9 +1,13 @@
-import sounddevice as sd
-import numpy as np
-import noisereduce as nr
+import argparse
 import queue
 
-import argparse
+import noisereduce as nr
+import numpy as np
+
+import sounddevice as sd
+import soundfile as sf
+
+import threading
 
 MONO_AUDIO = 1
 OPTIMAL_BLOCK_SIZE = 1024
@@ -16,6 +20,11 @@ audio_queue = queue.Queue()
 
 input_device_id = -1
 
+# save current frame for file processing
+current_frame = 0
+
+# how aggressive to be when noice reducing
+prop_decrease = .7
 
 def list_devices():
     default_input_device = DEFAULT_INPUT_DEVICE
@@ -66,7 +75,7 @@ def input_callback(indata, frames, time, status):
     global input_device_id
     # Perform noise reduction on the resampled input
     reduced_noise = nr.reduce_noise(y=indata[:, 0], sr=sd.query_devices(input_device_id)['default_samplerate'],
-                                    prop_decrease=.7,
+                                    prop_decrease=prop_decrease,
                                     time_mask_smooth_ms=20,
                                     freq_mask_smooth_hz=300,
                                     stationary=True)  # Assume stationary noise (e.g., hum or consistent noise)
@@ -87,6 +96,46 @@ def output_callback(outdata, frames, time, status):
             outdata[:, 0] = output_audio[:frames]
     except queue.Empty:
         outdata[:, 0] = 0  # If no audio is available, fill with silence
+
+
+def denoise_file(filename, output_device_id):
+    event = threading.Event()
+
+    try:
+        data, fs = sf.read(filename, always_2d=True, dtype=np.float32)
+
+        # Perform noise reduction on the file data
+        denoised_data = nr.reduce_noise(y=data[:, 0], sr=fs, prop_decrease=prop_decrease,
+                                        time_mask_smooth_ms=20, freq_mask_smooth_hz=300, stationary=True)
+
+        def file_callback(outdata, frames, time, status):
+            global current_frame
+            if status:
+                print(status)
+
+            # Get the chunk size for the current playback
+            chunksize = min(len(denoised_data) - current_frame, frames)
+
+            # Reshape the denoised data to match output format
+            chunk = denoised_data[current_frame:current_frame + chunksize]
+            outdata[:chunksize, 0] = chunk[:chunksize]  # Ensure data fits the outdata array
+
+            # If the chunk is smaller than the requested frame, fill the rest with silence
+            if chunksize < frames:
+                outdata[chunksize:, :] = 0
+                raise sd.CallbackStop()  # End the playback if all data has been processed
+
+            # Update the current frame position
+            current_frame += chunksize
+
+        # Open the OutputStream with the denoised data
+        with sd.OutputStream(samplerate=fs, device=output_device_id, channels=MONO_AUDIO,
+                             callback=file_callback, dtype=np.float32, finished_callback=event.set):
+            event.wait()
+    except KeyboardInterrupt:
+        print("\nInterrupted by user")
+    except Exception as e:
+        print(e)
 
 
 def continuous_stream(intput_device_id, output_device_id):
@@ -119,6 +168,7 @@ def continuous_stream(intput_device_id, output_device_id):
         print("\nProgram stopped by user")
     except Exception as ex:
         print("invalid input or output device")
+        print(ex)
 
 
 def initialize_arguments():
@@ -127,10 +177,15 @@ def initialize_arguments():
     parser.add_argument("-li", "--list-inputs", help="show a list of available input devices", action="store_true")
     parser.add_argument("-lo", "--list-outputs", help="show a list of available output devices", action="store_true")
 
+    parser.add_argument("-a", "--aggressive", help="make the noise canceling more aggressive (may result in artifacts)", action="store_true")
+
     parser.add_argument(
         '-i', '--input-device', type=int, help='input device (numeric ID)')
     parser.add_argument(
         '-o', '--output-device', type=int, help='output device (numeric ID)')
+
+    parser.add_argument(
+        '-f', '--filename', metavar='FILENAME', help='Process file')
     return parser.parse_args()
 
 
@@ -147,7 +202,19 @@ def main():
         list_outputs()
         return
 
-    if not (args.input_device and args.output_device):
+    if args.aggressive:
+        global prop_decrease
+        prop_decrease = 1
+
+    if args.filename:
+        if args.output_device is None:
+            print("must specify output device")
+            return
+
+        denoise_file(args.filename, args.output_device)
+        return
+
+    if args.input_device is None or args.output_device is None:
         print("Input and output devices must be specified")
         return
     global input_device_id

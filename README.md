@@ -28,7 +28,7 @@ options:
 * install this project's dependencies
 
 ```
-pip install sounddevice numpy noisereduce
+pip install sounddevice soundfile numpy noisereduce
 ```
 
 * run the program with the wanted arguments
